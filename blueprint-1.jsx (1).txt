@@ -1,0 +1,674 @@
+import { useState } from "react";
+
+const phases = [
+  {
+    id: 1,
+    days: "Days 1–3",
+    title: "Infrastructure Layer",
+    subtitle: "Zero-cost scaffolding",
+    color: "#00FF87",
+    icon: "⬡",
+    items: [
+      {
+        label: "Domain + Hosting",
+        detail: "Vercel (free), Supabase (free tier), GitHub. No credit card needed. Deploy a Next.js shell in <2 hours.",
+      },
+      {
+        label: "Core Stack Decision",
+        detail: "Next.js 14 (API routes = your backend), Supabase (Postgres + Auth + Edge Functions), Resend (email, free tier).",
+      },
+      {
+        label: "API Key Strategy",
+        detail: "Sign up for Anthropic/OpenAI free credits ($5–$18 trial credits). This funds your first automation runs before revenue hits.",
+      },
+      {
+        label: "Payment Rails",
+        detail: "Stripe (free to set up, 2.9% + 30¢ per transaction). Create your first product and price object on Day 1.",
+      },
+    ],
+  },
+  {
+    id: 2,
+    days: "Days 4–10",
+    title: "Value Engine Layer",
+    subtitle: "The machine that makes money",
+    color: "#FF6B35",
+    icon: "◈",
+    items: [
+      {
+        label: "Pick ONE Vertical (Critical)",
+        detail: "SEO content agency (fastest), B2B cold email personalization, AI-generated niche newsletters, or white-label API wrapper for SMBs. One only. Dilution kills.",
+      },
+      {
+        label: "The Core Automation Loop",
+        detail: "Input (client brief / URL / keyword) → Claude/GPT processes → Output delivered via webhook, email, or dashboard. This loop IS your product.",
+      },
+      {
+        label: "Prompt Engineering as a Moat",
+        detail: "Your prompts are your IP. A 500-token system prompt that consistently produces $500-worth of work is your unfair advantage. Iterate daily.",
+      },
+      {
+        label: "Quality Control Agent",
+        detail: "Build a second AI pass: after content is generated, a grader agent scores it against a rubric. Only outputs scoring 8+/10 are delivered. Automates QA.",
+      },
+    ],
+  },
+  {
+    id: 3,
+    days: "Days 11–17",
+    title: "Delivery & Client Layer",
+    subtitle: "Sell before you build fully",
+    color: "#C77DFF",
+    icon: "◎",
+    items: [
+      {
+        label: "The 'Done For You' Positioning",
+        detail: "Never sell 'AI tool access.' Sell outcomes: '10 SEO articles/month delivered to your CMS.' Clients pay for outputs, not prompts.",
+      },
+      {
+        label: "Client Dashboard (Supabase + Next.js)",
+        detail: "Simple portal: client logs in, sees their orders, downloads outputs, views usage. Build this in 2 days. It makes $29/mo feel like $299/mo.",
+      },
+      {
+        label: "Async Delivery System",
+        detail: "Client submits brief → stored in Supabase → cron job (Vercel or GitHub Actions) runs nightly → output emailed + stored → zero human touchpoints.",
+      },
+      {
+        label: "First 3 Clients: Cold Outreach",
+        detail: "Find 50 SMBs on LinkedIn needing content. Offer a free trial batch (5 articles). Run it through your system. Then pitch $1,500/mo retainer. Close 3 = $4,500 MRR.",
+      },
+    ],
+  },
+  {
+    id: 4,
+    days: "Days 18–24",
+    title: "Revenue Architecture Layer",
+    subtitle: "Stack the income streams",
+    color: "#FFD166",
+    icon: "⟁",
+    items: [
+      {
+        label: "Stream 1: Retainer Clients",
+        detail: "$1,500–$3,000/mo each. Target: 6 clients = $9,000–$18,000 MRR alone. This is your foundation.",
+      },
+      {
+        label: "Stream 2: Productized SaaS Tier",
+        detail: "Stripe subscription at $97–$297/mo. Clients self-serve via your portal. No calls, no Slack. Pure recurring revenue from the same engine.",
+      },
+      {
+        label: "Stream 3: API Resale Margin",
+        detail: "You pay $0.003/token. You charge for 'AI credits' at 10x markup built into your pricing. Invisible to clients, pure margin.",
+      },
+      {
+        label: "Stream 4: White-Label Licensing",
+        detail: "Sell your entire system (codebase + prompts + dashboard) to agencies for $3,000–$5,000 flat fee + $500/mo. 2 sales = $7,000 upfront.",
+      },
+    ],
+  },
+  {
+    id: 5,
+    days: "Days 25–30",
+    title: "Silent Operations Layer",
+    subtitle: "Removing yourself from the machine",
+    color: "#06D6A0",
+    icon: "⌘",
+    items: [
+      {
+        label: "Full Automation Audit",
+        detail: "Map every touchpoint you still handle manually. If it happens more than twice, automate it. Zapier (free tier) or n8n (self-hosted, free) for glue logic.",
+      },
+      {
+        label: "Error Handling & Alerts",
+        detail: "Build a monitoring layer: if any automation fails, Slack/email you instantly. 99% of the time = silence. You only act on failures. This is 'exception-based management.'",
+      },
+      {
+        label: "Client Onboarding Automation",
+        detail: "Stripe webhook → Supabase user created → welcome email via Resend → dashboard access granted → first batch queued. Zero human steps. Test 5 full runs.",
+      },
+      {
+        label: "The 'Owner's Dashboard'",
+        detail: "One internal page: MRR, churn, active clients, automation health, API cost vs. revenue. You check this once a week. That's your job now.",
+      },
+    ],
+  },
+];
+
+const economics = [
+  { label: "API Costs (OpenAI/Anthropic)", value: "~$200–$400/mo", type: "cost" },
+  { label: "Vercel + Supabase + Tools", value: "~$50–$100/mo", type: "cost" },
+  { label: "Stripe Fees (2.9%)", value: "~$250–$500/mo at scale", type: "cost" },
+  { label: "Retainer Clients (6 × $2,000)", value: "$12,000/mo", type: "rev" },
+  { label: "SaaS Subscribers (20 × $197)", value: "$3,940/mo", type: "rev" },
+  { label: "White-label licensing (avg)", value: "$2,000/mo", type: "rev" },
+  { label: "Total Revenue Target", value: "$17,940/mo", type: "total" },
+  { label: "Net After Costs", value: "~$17,200/mo", type: "total" },
+];
+
+const risks = [
+  { risk: "API costs spiral", fix: "Set hard spending caps in OpenAI dashboard. Never remove them." },
+  { risk: "Client churn", fix: "Lock in 3-month prepay at 10% discount. Reduces churn by ~60%." },
+  { risk: "AI output quality drops", fix: "Grader agent + weekly human audit of 5 random outputs." },
+  { risk: "Platform bans you", fix: "Never use free-tier email for bulk outreach. Use Resend + your domain." },
+  { risk: "Scope creep kills time", fix: "Charge for scope creep immediately or decline it. Protect the system." },
+];
+
+export default function Blueprint() {
+  const [activePhase, setActivePhase] = useState(null);
+  const [tab, setTab] = useState("phases");
+
+  return (
+    <div style={{
+      background: "#080B0F",
+      minHeight: "100vh",
+      fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
+      color: "#E8E8E0",
+      padding: "0",
+      overflow: "hidden auto",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;700&family=Bebas+Neue&display=swap');
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        .header-grid {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          align-items: end;
+          gap: 24px;
+          padding: 48px 48px 0;
+          border-bottom: 1px solid #1A1F28;
+          padding-bottom: 32px;
+          margin-bottom: 0;
+        }
+
+        .super {
+          font-size: 11px;
+          letter-spacing: 4px;
+          color: #00FF87;
+          text-transform: uppercase;
+          margin-bottom: 12px;
+          opacity: 0.8;
+        }
+
+        h1 {
+          font-family: 'Bebas Neue', sans-serif;
+          font-size: clamp(40px, 6vw, 72px);
+          line-height: 0.95;
+          letter-spacing: 2px;
+          color: #F0EFE7;
+          font-weight: 400;
+        }
+
+        h1 span {
+          color: #00FF87;
+        }
+
+        .stat-block {
+          text-align: right;
+        }
+
+        .stat-num {
+          font-family: 'Bebas Neue', sans-serif;
+          font-size: 52px;
+          color: #00FF87;
+          line-height: 1;
+          letter-spacing: 2px;
+        }
+
+        .stat-label {
+          font-size: 10px;
+          letter-spacing: 3px;
+          color: #555;
+          text-transform: uppercase;
+          margin-top: 4px;
+        }
+
+        .tabs {
+          display: flex;
+          gap: 0;
+          padding: 0 48px;
+          border-bottom: 1px solid #1A1F28;
+          margin-top: 0;
+        }
+
+        .tab {
+          padding: 16px 24px;
+          font-size: 11px;
+          letter-spacing: 3px;
+          text-transform: uppercase;
+          cursor: pointer;
+          border: none;
+          background: none;
+          color: #444;
+          border-bottom: 2px solid transparent;
+          transition: all 0.2s;
+          font-family: inherit;
+        }
+
+        .tab.active {
+          color: #00FF87;
+          border-bottom: 2px solid #00FF87;
+        }
+
+        .tab:hover:not(.active) {
+          color: #888;
+        }
+
+        .content {
+          padding: 40px 48px;
+        }
+
+        .phases-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+          gap: 2px;
+          background: #111519;
+        }
+
+        .phase-card {
+          background: #0C1015;
+          padding: 28px;
+          cursor: pointer;
+          transition: background 0.15s;
+          border-left: 3px solid transparent;
+          position: relative;
+        }
+
+        .phase-card:hover {
+          background: #111822;
+        }
+
+        .phase-card.open {
+          background: #111822;
+        }
+
+        .phase-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 16px;
+        }
+
+        .phase-icon {
+          font-size: 24px;
+          line-height: 1;
+        }
+
+        .phase-days {
+          font-size: 10px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          opacity: 0.5;
+          padding: 3px 8px;
+          border: 1px solid #1F2833;
+          border-radius: 2px;
+        }
+
+        .phase-title {
+          font-family: 'Bebas Neue', sans-serif;
+          font-size: 26px;
+          letter-spacing: 1px;
+          line-height: 1.1;
+          margin-bottom: 4px;
+        }
+
+        .phase-subtitle {
+          font-size: 10px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          opacity: 0.4;
+          margin-bottom: 16px;
+        }
+
+        .phase-items {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-top: 20px;
+          padding-top: 20px;
+          border-top: 1px solid #1A1F28;
+          animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .phase-item {
+          border-left: 2px solid #1A2030;
+          padding-left: 12px;
+        }
+
+        .item-label {
+          font-size: 12px;
+          font-weight: 500;
+          margin-bottom: 4px;
+          letter-spacing: 0.5px;
+        }
+
+        .item-detail {
+          font-size: 11px;
+          line-height: 1.6;
+          color: #666;
+        }
+
+        .preview-dots {
+          display: flex;
+          gap: 4px;
+          margin-top: 12px;
+        }
+
+        .dot {
+          width: 4px;
+          height: 4px;
+          border-radius: 50%;
+          background: #1F2833;
+        }
+
+        /* Economics */
+        .econ-table {
+          width: 100%;
+          border-collapse: collapse;
+          max-width: 720px;
+        }
+
+        .econ-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 14px 20px;
+          border-bottom: 1px solid #111519;
+          transition: background 0.1s;
+        }
+
+        .econ-row:hover {
+          background: #0F1318;
+        }
+
+        .econ-row.cost { border-left: 3px solid #FF4D4D44; }
+        .econ-row.rev { border-left: 3px solid #00FF8744; }
+        .econ-row.total {
+          border-left: 3px solid #00FF87;
+          background: #00FF870A;
+          font-weight: 500;
+        }
+
+        .econ-label { font-size: 12px; color: #888; }
+        .econ-row.total .econ-label { color: #E8E8E0; }
+
+        .econ-val {
+          font-size: 13px;
+          font-weight: 500;
+          letter-spacing: 0.5px;
+        }
+
+        .econ-row.cost .econ-val { color: #FF6B6B; }
+        .econ-row.rev .econ-val { color: #00FF87; }
+        .econ-row.total .econ-val { color: #00FF87; font-size: 16px; }
+
+        /* Risks */
+        .risk-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 2px;
+          background: #111519;
+        }
+
+        .risk-card {
+          background: #0C1015;
+          padding: 24px;
+        }
+
+        .risk-label {
+          font-size: 10px;
+          letter-spacing: 3px;
+          text-transform: uppercase;
+          color: #FF6B35;
+          margin-bottom: 8px;
+        }
+
+        .risk-risk {
+          font-size: 14px;
+          font-weight: 500;
+          margin-bottom: 12px;
+          color: #E8E8E0;
+        }
+
+        .risk-fix-label {
+          font-size: 9px;
+          letter-spacing: 3px;
+          text-transform: uppercase;
+          color: #00FF87;
+          margin-bottom: 6px;
+        }
+
+        .risk-fix {
+          font-size: 11px;
+          line-height: 1.6;
+          color: #666;
+        }
+
+        /* Truth section */
+        .truth-block {
+          background: #0C1015;
+          border-left: 3px solid #FFD166;
+          padding: 24px 28px;
+          margin-bottom: 12px;
+          max-width: 720px;
+        }
+
+        .truth-title {
+          font-size: 11px;
+          letter-spacing: 3px;
+          text-transform: uppercase;
+          color: #FFD166;
+          margin-bottom: 8px;
+        }
+
+        .truth-text {
+          font-size: 12px;
+          line-height: 1.7;
+          color: #888;
+        }
+
+        .section-title {
+          font-family: 'Bebas Neue', sans-serif;
+          font-size: 32px;
+          letter-spacing: 2px;
+          margin-bottom: 24px;
+          color: #F0EFE7;
+        }
+
+        .section-sub {
+          font-size: 11px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #444;
+          margin-bottom: 32px;
+          margin-top: -16px;
+        }
+
+        .toggle-hint {
+          font-size: 10px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #333;
+          margin-bottom: 16px;
+        }
+
+        @media (max-width: 600px) {
+          .header-grid { padding: 28px 20px 24px; }
+          .tabs { padding: 0 20px; }
+          .content { padding: 24px 20px; }
+          .phases-grid { grid-template-columns: 1fr; }
+          .risk-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
+
+      <div className="header-grid">
+        <div>
+          <div className="super">30-Day Asset Blueprint · $0 Capital · AI Automation</div>
+          <h1>The <span>$18K/MO</span><br />Silent Machine</h1>
+        </div>
+        <div className="stat-block">
+          <div className="stat-num">$18K</div>
+          <div className="stat-label">Target MRR</div>
+          <div style={{ marginTop: 16 }}>
+            <div className="stat-num" style={{ fontSize: 28, color: "#FF6B35" }}>30</div>
+            <div className="stat-label">Days to Build</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="tabs">
+        {["phases", "economics", "risks", "truth"].map(t => (
+          <button key={t} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
+            {t === "phases" && "System Layers"}
+            {t === "economics" && "Unit Economics"}
+            {t === "risks" && "Risk Map"}
+            {t === "truth" && "Hard Truths"}
+          </button>
+        ))}
+      </div>
+
+      <div className="content">
+
+        {tab === "phases" && (
+          <>
+            <div className="section-title">5 Layers of the Machine</div>
+            <div className="section-sub">Click any layer to expand the build instructions</div>
+            <div className="toggle-hint">↓ expand to reveal each layer</div>
+            <div className="phases-grid">
+              {phases.map(phase => (
+                <div
+                  key={phase.id}
+                  className={`phase-card ${activePhase === phase.id ? "open" : ""}`}
+                  style={{ borderLeftColor: activePhase === phase.id ? phase.color : "transparent" }}
+                  onClick={() => setActivePhase(activePhase === phase.id ? null : phase.id)}
+                >
+                  <div className="phase-header">
+                    <span className="phase-icon" style={{ color: phase.color }}>{phase.icon}</span>
+                    <span className="phase-days">{phase.days}</span>
+                  </div>
+                  <div className="phase-title" style={{ color: phase.color }}>{phase.title}</div>
+                  <div className="phase-subtitle">{phase.subtitle}</div>
+
+                  {activePhase !== phase.id && (
+                    <div className="preview-dots">
+                      {phase.items.map((_, i) => (
+                        <div key={i} className="dot" style={{ background: phase.color + "33" }} />
+                      ))}
+                    </div>
+                  )}
+
+                  {activePhase === phase.id && (
+                    <div className="phase-items">
+                      {phase.items.map((item, i) => (
+                        <div key={i} className="phase-item" style={{ borderLeftColor: phase.color + "44" }}>
+                          <div className="item-label" style={{ color: phase.color }}>{item.label}</div>
+                          <div className="item-detail">{item.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {tab === "economics" && (
+          <>
+            <div className="section-title">Unit Economics</div>
+            <div className="section-sub">Revenue model breakdown at month 3 steady state</div>
+            <div style={{ background: "#0C1015", padding: "2px" }}>
+              {economics.map((row, i) => (
+                <div key={i} className={`econ-row ${row.type}`}>
+                  <span className="econ-label">{row.label}</span>
+                  <span className="econ-val">{row.value}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 40 }}>
+              <div className="section-title" style={{ fontSize: 24 }}>Revenue Milestones</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, background: "#111519", marginTop: 8 }}>
+                {[
+                  { week: "Week 1", target: "$0", note: "System built. No clients yet.", color: "#333" },
+                  { week: "Week 2", target: "$1,500", note: "First retainer client closed on pilot.", color: "#FF6B35" },
+                  { week: "Week 3", target: "$4,500", note: "3 retainer clients. System validated.", color: "#FFD166" },
+                  { week: "Month 2", target: "$9,000", note: "6 retainers + first SaaS signups.", color: "#C77DFF" },
+                  { week: "Month 3", target: "$18,000", note: "Full stack running. You're the exception-handler only.", color: "#00FF87" },
+                ].map((m, i) => (
+                  <div key={i} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "16px 20px", background: "#0C1015",
+                    borderLeft: `3px solid ${m.color}44`
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 10, letterSpacing: 3, textTransform: "uppercase", color: m.color, marginBottom: 4 }}>{m.week}</div>
+                      <div style={{ fontSize: 11, color: "#666" }}>{m.note}</div>
+                    </div>
+                    <div style={{ fontSize: 22, fontFamily: "'Bebas Neue', sans-serif", color: m.color, letterSpacing: 2 }}>{m.target}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {tab === "risks" && (
+          <>
+            <div className="section-title">Risk Map</div>
+            <div className="section-sub">Every failure mode + its kill switch</div>
+            <div className="risk-grid">
+              {risks.map((r, i) => (
+                <div key={i} className="risk-card">
+                  <div className="risk-label">Risk #{i + 1}</div>
+                  <div className="risk-risk">{r.risk}</div>
+                  <div className="risk-fix-label">→ Kill Switch</div>
+                  <div className="risk-fix">{r.fix}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {tab === "truth" && (
+          <>
+            <div className="section-title">Hard Truths</div>
+            <div className="section-sub">What most blueprints omit</div>
+
+            {[
+              {
+                title: "Month 1 Is Not Passive",
+                text: "The word 'passive' is earned at month 3+. The first 30 days require 6–10 hours/day of focused building. You are building the machine that becomes passive. Don't confuse the construction phase with the operating phase.",
+              },
+              {
+                title: "$18K/MO Is Real But Not Guaranteed",
+                text: "This number requires closing 6 retainer clients and growing a SaaS user base. At $1,500/client, that means 6 sales conversations that convert. With good outreach, expect a 10–15% close rate — meaning 40–60 cold contacts minimum. That's work.",
+              },
+              {
+                title: "Your Prompts Are the Business",
+                text: "The code is table stakes. What makes clients stay is output quality. A system prompt that consistently produces publishable, on-brand content is worth more than any dashboard. Spend 20% of your build time on prompt tuning.",
+              },
+              {
+                title: "AI Costs Scale With Revenue",
+                text: "At $18K/mo revenue, your API costs should be $300–$600/mo — a healthy 2–3% of revenue. But if your prompts are bloated or you have no caching strategy, costs can balloon to 15%+. Build cost monitoring from Day 1.",
+              },
+              {
+                title: "The Biggest Risk Is Stopping",
+                text: "Most people who fail at this quit at Day 12 when they have zero clients and the system feels unproven. The inflection point is almost always between Day 18 and Day 25. The system is not broken — it's compressing. Keep building.",
+              },
+            ].map((t, i) => (
+              <div key={i} className="truth-block">
+                <div className="truth-title">{String(i + 1).padStart(2, "0")} — {t.title}</div>
+                <div className="truth-text">{t.text}</div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
