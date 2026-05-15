@@ -1,0 +1,100 @@
+{
+  "theme": "dark",
+  "archetype": "2 (Tactical Minimalism / Bespoke Equipment)",
+  "rationale": "Karim's personal assistant demands a bespoke, high-end 'equipment' aesthetic. We reject sci-fi tropes (blue holograms, glassmorphism) in favor of stark, unyielding clarity. Dark mode minimizes eye strain; the UI uses deep obsidian with signal red accents to feel like a high-performance command center, not a chatbot.",
+  "colors": {
+    "background": "#050505",
+    "surface": "#0A0A0A",
+    "surface_active": "#111111",
+    "border": "#222222",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#737373",
+    "accent_primary": "#FF3B30",
+    "accent_hover": "#FF5147"
+  },
+  "typography": {
+    "primary_font": "Cabinet Grotesk",
+    "secondary_font": "JetBrains Mono",
+    "rationale": "Cabinet Grotesk provides a confident, sharp, bespoke voice for UI labels, while JetBrains Mono handles conversational output, system logs, and action payloads to ground the interface in technical reality.",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter uppercase",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight uppercase",
+      "h3": "text-lg sm:text-xl font-medium tracking-tight",
+      "body": "text-base font-mono leading-relaxed",
+      "label": "text-xs font-mono tracking-[0.2em] uppercase text-neutral-500"
+    }
+  },
+  "layout": {
+    "grid_system": "Mode B: The 'Control Room' Grid",
+    "spacing_scale": "Generous internally, tight structurally. Containers use p-6 to p-8, but grid gaps are gap-4 to create a dense command center feel.",
+    "patterns": [
+      "Top-Left reserved for system status (Online/Listening/Processing).",
+      "Left Sidebar for capability grid and hardware-like toggles.",
+      "Center-Right for the live conversation and action payload cards."
+    ]
+  },
+  "surfaces_and_borders": {
+    "style": "Grid Borders (The 'Technical' Look)",
+    "rules": [
+      "No rounded corners. Use rounded-none for a mechanical feel.",
+      "No soft box-shadows. Use 1px solid borders (border-[#222222]).",
+      "Hover states should invert colors or use a 1px inner border of Signal Red.",
+      "Never use glassmorphism. It feels flimsy. Use solid opaque backgrounds."
+    ]
+  },
+  "components": {
+    "voice_input": {
+      "style": "Mechanical toggle. Stark white background when idle, stark Signal Red background when active/listening. Sharp corners. text-black when active.",
+      "animation": "Snapping, immediate transition. No soft fading."
+    },
+    "action_card": {
+      "style": "Looks like a terminal output block. bg-[#0A0A0A], 1px border. Uses monospace font exclusively. Keys are grey, values are white.",
+      "hover": "-translate-y-1, border-[#FF3B30] transition-transform duration-100"
+    },
+    "waveform_indicator": {
+      "style": "Minimalist vertical bars, pure white or signal red. NO generic gradients. Syncs with TTS/Mic.",
+      "animation": "Staggered height scaling based on audio frequency (simulated)."
+    },
+    "chat_message": {
+      "user": "Align right, grey text, simple.",
+      "jarvis": "Align left, white monospace text, accompanied by a small status dot (red for action, white for speech)."
+    }
+  },
+  "motion": {
+    "philosophy": "Tactical and immediate.",
+    "rules": [
+      "No easing delays. Use 'ease-out' for everything.",
+      "Action cards snap into place with staggered opacity.",
+      "Typewriter effect for JARVIS spoken responses (critical for the 'assistant' feel)."
+    ]
+  },
+  "media": {
+    "image_urls": {
+      "waveform_texture": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/f159b20c-4bc6-491a-9dee-c4ace646370a/images/658202165007c8c7ed4d2e4ab04e0de9dc7728a97c075ba4e7676bae3c58847e.png",
+        "description": "Abstract metallic waveform. Use as a very subtle background for the capability sidebar or idle state overlay."
+      },
+      "obsidian_status_bg": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/f159b20c-4bc6-491a-9dee-c4ace646370a/images/2f45ffef0228cee4097cdf99672cf378c48750237386952239ec78b55ee2db79.png",
+        "description": "High-end matte metal with red LED slit. Use as the background for the primary system status header."
+      }
+    }
+  },
+  "icons": {
+    "library": "lucide-react",
+    "usage": "Use sharp, un-rounded icons if possible, or stick to bare minimum technical symbols (Terminal, Mic, Activity, Power). Keep stroke width at 1.5 or 1."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Exceeds APCA requirements. White on #050505 is highly legible.",
+    "testing_attributes": "All interactive elements MUST include data-testid. Examples: data-testid='mic-toggle-button', data-testid='action-card-sms', data-testid='system-status-indicator'."
+  },
+  "instructions_to_main_agent": [
+    "Build a single-page application that feels like a full-screen hardware terminal.",
+    "Do NOT use generic rounded chat bubbles. The conversation stream should look like an append-only log.",
+    "When an Action is parsed (e.g., Send SMS), render it as a distinct visual 'Card' (Action Payload block) next to or inside the conversation log, displaying the JSON parameters.",
+    "Implement a live visualizer (waveform or bar visualizer) that reacts to the system 'listening' or 'speaking' states.",
+    "Keep standard Shadcn components to a minimum; override their borders to be rounded-none and strip shadows.",
+    "Include an overarching layout grid: Left sidebar (1/4 width) for persistent system status (Online, Network, Modules) and right main area (3/4 width) for the interaction log.",
+    "Ensure the application state manages: IDLE, LISTENING, PROCESSING, SPEAKING."
+  ]
+}
