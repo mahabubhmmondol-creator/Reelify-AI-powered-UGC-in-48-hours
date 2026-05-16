@@ -126,9 +126,11 @@ function App() {
     setInterim("");
     setState("LISTENING");
 
+    // Local-only state — avoids React-state stale-closure inside onend
     let finalText = "";
+    let interimT = "";
     rec.onresult = (event) => {
-      let interimT = "";
+      interimT = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const r = event.results[i];
         if (r.isFinal) finalText += r[0].transcript;
@@ -136,12 +138,13 @@ function App() {
       }
       setInterim(interimT || finalText);
     };
-    rec.onerror = () => {
+    rec.onerror = (e) => {
+      console.warn("speech-recognition error", e && e.error);
       setState("IDLE");
       setInterim("");
     };
     rec.onend = () => {
-      const t = (finalText || interim || "").trim();
+      const t = (finalText || interimT || "").trim();
       setInterim("");
       if (t) {
         sendToJarvis(t);
@@ -151,15 +154,18 @@ function App() {
     };
     try {
       rec.start();
-    } catch (_) {
+    } catch (e) {
+      console.warn("mic start failed", e);
       setState("IDLE");
     }
-  }, [interim, sendToJarvis]);
+  }, [sendToJarvis]);
 
   const stopMic = useCallback(() => {
     try {
       recRef.current && recRef.current.stop();
-    } catch (_) {}
+    } catch (e) {
+      console.debug("mic stop noop", e);
+    }
   }, []);
 
   const handleToggleMic = () => {

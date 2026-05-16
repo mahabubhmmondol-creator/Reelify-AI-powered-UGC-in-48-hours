@@ -19,7 +19,9 @@ export function speak(text, { onStart, onEnd, onError, voice } = {}) {
   }
   try {
     window.speechSynthesis.cancel();
-  } catch (_) {}
+  } catch (e) {
+    console.debug("speechSynthesis.cancel noop", e);
+  }
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 1.02;
   u.pitch = 0.85;
@@ -41,5 +43,7 @@ export function speak(text, { onStart, onEnd, onError, voice } = {}) {
 export function cancelSpeak() {
   try {
     window.speechSynthesis && window.speechSynthesis.cancel();
-  } catch (_) {}
+  } catch (e) {
+    console.debug("cancelSpeak noop", e);
+  }
 }
