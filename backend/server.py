@@ -7,12 +7,16 @@ import json
 import logging
 import re
 import uuid
+import base64
+import httpx
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from twilio.rest import Client as TwilioClient
+from twilio.base.exceptions import TwilioRestException
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -23,6 +27,11 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
+TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_FROM = os.environ.get("TWILIO_FROM_NUMBER")
+SARVAM_KEY = os.environ.get("SARVAM_API_KEY")
+SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
 
 # Hard-locked user identity (per system prompt: "built exclusively for Karim")
 LOCKED_USER = "karim"
@@ -183,6 +192,13 @@ async def jarvis_chat(req: ChatRequest):
         system_message=JARVIS_SYSTEM_PROMPT,
     ).with_model("anthropic", "claude-sonnet-4-5-20250929")
 
+    # Pull contacts so JARVIS can resolve names -> numbers in action JSON
+    contacts = await db.jarvis_contacts.find({}, {"_id": 0}).to_list(200)
+    contacts_block = ""
+    if contacts:
+        lines = [f"- {c['name']}: {c['phone']}" for c in contacts]
+        contacts_block = "\n[Contacts known to JARVIS]\n" + "\n".join(lines) + "\n"
+
     # Replay history so JARVIS has context. emergentintegrations LlmChat
     # does not expose a direct messages-array constructor, so we feed the
     # most recent user turn and rely on the system prompt + on-the-wire
@@ -196,11 +212,12 @@ async def jarvis_chat(req: ChatRequest):
             transcript_lines.append(line)
         compact = "\n".join(transcript_lines)
         prompt_text = (
+            f"{contacts_block}"
             f"[Prior session transcript for memory — do not repeat]\n{compact}\n\n"
             f"[Current message from Karim]\n{user_text}"
         )
     else:
-        prompt_text = user_text
+        prompt_text = (contacts_block + "\n" if contacts_block else "") + user_text
 
     try:
         raw_response = await chat.send_message(UserMessage(text=prompt_text))
@@ -268,6 +285,163 @@ async def jarvis_identity():
             "control_device",
         ],
     }
+
+
+# ============================================================
+# Contacts (so JARVIS can resolve "send Rakib an SMS" -> phone)
+# ============================================================
+class ContactIn(BaseModel):
+    name: str
+    phone: str
+
+
+class ContactRecord(BaseModel):
+    id: str
+    name: str
+    phone: str
+
+
+@api_router.get("/jarvis/contacts", response_model=List[ContactRecord])
+async def list_contacts():
+    rows = await db.jarvis_contacts.find({}, {"_id": 0}).sort("name", 1).to_list(500)
+    return [ContactRecord(**r) for r in rows]
+
+
+@api_router.post("/jarvis/contacts", response_model=ContactRecord)
+async def add_contact(c: ContactIn):
+    name = c.name.strip()
+    phone = c.phone.strip()
+    if not name or not phone:
+        raise HTTPException(status_code=400, detail="name and phone are required")
+    if not phone.startswith("+"):
+        raise HTTPException(status_code=400, detail="phone must be E.164 (e.g. +91...)")
+    doc = {"id": str(uuid.uuid4()), "name": name, "phone": phone}
+    await db.jarvis_contacts.insert_one(dict(doc))
+    return ContactRecord(**doc)
+
+
+@api_router.delete("/jarvis/contacts/{contact_id}")
+async def delete_contact(contact_id: str):
+    res = await db.jarvis_contacts.delete_one({"id": contact_id})
+    return {"deleted": res.deleted_count}
+
+
+# ============================================================
+# Twilio — real SMS + voice calls
+# ============================================================
+def _twilio_client() -> TwilioClient:
+    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
+        raise HTTPException(status_code=500, detail="Twilio credentials not configured")
+    return TwilioClient(TWILIO_SID, TWILIO_TOKEN)
+
+
+class SmsIn(BaseModel):
+    to: str
+    message: str
+
+
+class CallIn(BaseModel):
+    to: str
+    message: Optional[str] = "Hello sir. This is JARVIS, calling on Karim's behalf."
+
+
+@api_router.post("/jarvis/twilio/sms")
+async def twilio_send_sms(req: SmsIn):
+    to = req.to.strip()
+    if not to.startswith("+"):
+        raise HTTPException(status_code=400, detail="'to' must be in E.164 format (+91...)")
+    if not req.message.strip():
+        raise HTTPException(status_code=400, detail="empty message")
+    twc = _twilio_client()
+    try:
+        msg = twc.messages.create(body=req.message, from_=TWILIO_FROM, to=to)
+        return {"sid": msg.sid, "status": msg.status, "to": to}
+    except TwilioRestException as e:
+        raise HTTPException(status_code=400, detail=f"twilio: {e.msg}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/jarvis/twilio/call")
+async def twilio_make_call(req: CallIn):
+    to = req.to.strip()
+    if not to.startswith("+"):
+        raise HTTPException(status_code=400, detail="'to' must be in E.164 format (+91...)")
+    twc = _twilio_client()
+    say_text = (req.message or "").strip() or "Hello."
+    # Escape minimal XML
+    safe = (
+        say_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    )
+    twiml = f'<Response><Say voice="alice">{safe}</Say></Response>'
+    try:
+        call = twc.calls.create(twiml=twiml, from_=TWILIO_FROM, to=to)
+        return {"sid": call.sid, "status": call.status, "to": to}
+    except TwilioRestException as e:
+        raise HTTPException(status_code=400, detail=f"twilio: {e.msg}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# Sarvam AI TTS — premium voice (Indian languages + en-IN)
+# ============================================================
+class TtsIn(BaseModel):
+    text: str
+    language: Optional[str] = "en-IN"  # en-IN | bn-IN | hi-IN | ...
+    speaker: Optional[str] = "anushka"
+    model: Optional[str] = "bulbul:v2"
+
+
+@api_router.post("/jarvis/tts")
+async def sarvam_tts(req: TtsIn):
+    if not SARVAM_KEY:
+        raise HTTPException(status_code=500, detail="SARVAM_API_KEY not configured")
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="empty text")
+    # Sarvam REST limit is ~500 chars per request for v2 (safe trim)
+    if len(text) > 1500:
+        text = text[:1500]
+
+    payload = {
+        "text": text,
+        "target_language_code": req.language or "en-IN",
+        "speaker": req.speaker or "anushka",
+        "model": req.model or "bulbul:v2",
+        "pitch": 0,
+        "pace": 1.0,
+        "loudness": 1.2,
+        "speech_sample_rate": 22050,
+        "enable_preprocessing": True,
+    }
+    headers = {"api-subscription-key": SARVAM_KEY, "Content-Type": "application/json"}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as cli:
+            r = await cli.post(SARVAM_TTS_URL, json=payload, headers=headers)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"sarvam: {r.status_code} {r.text[:200]}")
+        data = r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"sarvam error: {e}")
+
+    audios = data.get("audios") or []
+    if not audios:
+        raise HTTPException(status_code=502, detail="sarvam returned no audio")
+    # Concatenate (rare multi-chunk) — return as data URL for direct <audio> use
+    audio_b64 = audios[0]
+    return {
+        "audio_base64": audio_b64,
+        "mime": "audio/wav",
+        "data_url": f"data:audio/wav;base64,{audio_b64}",
+        "language": payload["target_language_code"],
+        "speaker": payload["speaker"],
+    }
+
+
 
 
 # Mount router

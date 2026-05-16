@@ -1,0 +1,50 @@
+{
+  "summary": "Backend-only testing for JARVIS iteration 2 (contacts CRUD, Sarvam TTS, Twilio validation, contact-name resolution in chat). 14/15 tests passed. The one failure is a prompt-engineering bug: JARVIS does not substitute contact names with phone numbers in action.to even though the contacts list is injected into the prompt.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "/api/jarvis/chat",
+        "issue": "Contact-name → phone resolution is not happening. With contact 'TestUserXXXX' -> '+919998887776' present, chat 'Send TestUserXXXX an SMS saying hello' returns action={'type':'send_sms','to':'TestUserXXXX','message':'Hello'} — the name was kept, not replaced. Root cause: (1) JARVIS_SYSTEM_PROMPT example literally shows `\"to\": \"Rakib\"` (a name), encouraging the LLM to keep names. (2) The injected contacts_block has no explicit directive like 'When you emit send_sms/make_call, you MUST use the phone number from the contacts list as the `to` field, not the name.' Fix: (a) change the example in the system prompt to use a phone number, e.g. `\"to\": \"+91...\"`; (b) prepend the contacts_block with a hard rule: 'For send_sms and make_call actions, the `to` field MUST be the phone number resolved from these contacts. Never use the name.'",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "/api/jarvis/twilio/sms & /call",
+        "issue": "Real Twilio calls returned 200 in this test run (Twilio accepted the request even though TWILIO_FROM_NUMBER=+917695831859 is the user's personal mobile, not a Twilio-issued number). That means actual SMS/call attempts were initiated. Recommend the main agent verify with the user whether real messages were dispatched and consider gating /sms and /call behind a feature flag or 'confirm=true' query param to prevent accidental sends during testing/dev."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_jarvis_iter2.py",
+    "/app/test_reports/pytest/jarvis_iter2_results.xml"
+  ],
+  "action_items": [
+    "Fix contact-name resolution in /api/jarvis/chat: update JARVIS_SYSTEM_PROMPT example to show a phone number in `to`, and prepend a hard directive to the contacts_block stating that send_sms/make_call MUST use the resolved phone number, not the name.",
+    "Consider adding a safety gate on /api/jarvis/twilio/sms and /api/jarvis/twilio/call to avoid accidental real sends during dev/testing (e.g., require a `confirm=true` query param or an env flag JARVIS_TWILIO_LIVE=1)."
+  ],
+  "critical_code_review_comments": [
+    "server.py line 67 (system prompt example) hard-codes `\"to\": \"Rakib\"` which directly contradicts the contact-resolution goal and is the root cause of the resolution failure.",
+    "Twilio real-send happens with no dry-run/confirm guard — high blast-radius if test traffic hits the endpoint.",
+    "Sarvam TTS endpoint silently truncates text >1500 chars without warning the caller; consider returning a 'truncated' flag in the response.",
+    "_twilio_client() raises HTTPException(500) for missing creds — fine, but could be checked once at startup so callers see consistent behavior."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_jarvis_iter2.py (new)"
+  ],
+  "success_rate": {
+    "backend": "93% (14/15)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "test_credentials": "N/A — no auth on these endpoints",
+  "seed_data_creation": "Created and cleaned up contacts named TestUser{6-hex} and TestUserDel{6-hex}. Verified post-test: zero stray TestUser* contacts remain. User's manual 'Rakib' contact untouched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 2: 14/15 backend tests pass. The one failure (contact resolution in chat) is a prompt issue, not a code/wiring issue — the contacts_block IS being injected into the LLM prompt (verified by reading server.py lines 196-220), but the LLM keeps the name because the system-prompt example shows `\"to\": \"Rakib\"`. After main agent updates the prompt, re-run `pytest /app/backend/tests/test_jarvis_iter2.py::test_chat_resolves_contact_name_to_phone -v`. All other endpoints (contacts CRUD + phone validation, Sarvam TTS en-IN & bn-IN, TTS empty-text 400, Twilio validation for empty/non-+ inputs on /sms and /call) work correctly. NOTE: Real Twilio /sms and /call returned 200 (sid present), meaning actual SMS/call may have been dispatched.",
+  "rca_of_the_issue": "Failed test: test_chat_resolves_contact_name_to_phone. Reproduction: POST /api/jarvis/contacts {name:'TestUserXYZ', phone:'+919998887776'} → 200. POST /api/jarvis/chat {text:'Send TestUserXYZ an SMS saying hello'} → response.action = {type:'send_sms', to:'TestUserXYZ', message:'Hello'}. Expected: action.to == '+919998887776'. RCA: The contacts list is correctly fetched and embedded in prompt_text (server.py:196-220), but the LLM is not instructed to use the phone over the name. The JARVIS_SYSTEM_PROMPT shows an example with `\"to\": \"Rakib\"` (server.py line 67-72), which trains the model to keep the contact name. Mitigation: (1) Replace the system-prompt example `to` with a phone number (e.g., `\"to\": \"+919998887776\"`). (2) In the contacts_block (server.py line 200), prefix a hard rule like: '\\n[RULE] When emitting send_sms or make_call, the `to` field MUST be the phone number from the contacts table above. Never use the contact name in `to`.\\n'."
+}

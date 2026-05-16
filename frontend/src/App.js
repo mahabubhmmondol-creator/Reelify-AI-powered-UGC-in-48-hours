@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/App.css";
 import axios from "axios";
-import { Trash2, Volume2, VolumeX } from "lucide-react";
+import { Trash2, Volume2, VolumeX, Radio } from "lucide-react";
 
 import { SystemStatus } from "./components/jarvis/SystemStatus";
 import { CapabilityGrid } from "./components/jarvis/CapabilityGrid";
 import { ConversationLog } from "./components/jarvis/ConversationLog";
 import { InputBar } from "./components/jarvis/InputBar";
-import { getRecognition, speak, cancelSpeak } from "./lib/voice";
+import { ContactsPanel } from "./components/jarvis/ContactsPanel";
+import {
+  getRecognition,
+  speakSarvam,
+  cancelSpeak,
+  startWakeWord,
+} from "./lib/voice";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 const SESSION_ID = "karim-default";
+
+const WAKE_GREETING = "Hello boss, ami apnar jonno ki korte pari";
+const WAKE_LANGUAGE = "bn-IN";
+const NORMAL_LANGUAGE = "en-IN";
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -20,8 +30,19 @@ function App() {
   const [typedText, setTypedText] = useState("");
   const [lastJarvisId, setLastJarvisId] = useState(null);
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [wakeEnabled, setWakeEnabled] = useState(false);
   const recRef = useRef(null);
+  const wakeRef = useRef(null);
+  const stateRef = useRef("IDLE");
+  const wakeEnabledRef = useRef(false);
   const micSupported = useMemo(() => !!getRecognition(), []);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+  useEffect(() => {
+    wakeEnabledRef.current = wakeEnabled;
+  }, [wakeEnabled]);
 
   // ---------- Load history on mount ----------
   useEffect(() => {
@@ -36,10 +57,6 @@ function App() {
       }
     };
     load();
-    // warm up voices
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.getVoices();
-    }
   }, []);
 
   // ---------- Send to backend ----------
@@ -81,15 +98,15 @@ function App() {
         const tick = () => {
           i++;
           setTypedText(full.slice(0, i));
-          if (i < full.length) {
-            setTimeout(tick, 18);
-          }
+          if (i < full.length) setTimeout(tick, 18);
         };
         if (full.length > 0) tick();
 
         if (ttsEnabled && full) {
           setState("SPEAKING");
-          speak(full, {
+          await speakSarvam(full, {
+            language: NORMAL_LANGUAGE,
+            speaker: "anushka",
             onEnd: () => setState("IDLE"),
             onError: () => setState("IDLE"),
           });
@@ -118,7 +135,7 @@ function App() {
     [ttsEnabled]
   );
 
-  // ---------- Microphone ----------
+  // ---------- Command Microphone ----------
   const startMic = useCallback(() => {
     const rec = getRecognition();
     if (!rec) return;
@@ -126,7 +143,6 @@ function App() {
     setInterim("");
     setState("LISTENING");
 
-    // Local-only state — avoids React-state stale-closure inside onend
     let finalText = "";
     let interimT = "";
     rec.onresult = (event) => {
@@ -146,11 +162,8 @@ function App() {
     rec.onend = () => {
       const t = (finalText || interimT || "").trim();
       setInterim("");
-      if (t) {
-        sendToJarvis(t);
-      } else {
-        setState("IDLE");
-      }
+      if (t) sendToJarvis(t);
+      else setState("IDLE");
     };
     try {
       rec.start();
@@ -191,6 +204,68 @@ function App() {
     }
   };
 
+  // ---------- Wake-word loop ----------
+  const handleWake = useCallback(async () => {
+    // Stop wake listener while we greet + take command (one mic at a time)
+    try {
+      wakeRef.current && wakeRef.current.stop();
+    } catch (e) {
+      console.debug("wake stop noop", e);
+    }
+    wakeRef.current = null;
+
+    // Pause-then-greet-then-mic
+    setState("SPEAKING");
+    await speakSarvam(WAKE_GREETING, {
+      language: WAKE_LANGUAGE,
+      speaker: "anushka",
+      onEnd: () => {
+        setState("IDLE");
+        // open command mic right after greeting
+        setTimeout(() => {
+          if (stateRef.current === "IDLE") startMic();
+        }, 250);
+      },
+      onError: () => {
+        setState("IDLE");
+        startMic();
+      },
+    });
+  }, [startMic]);
+
+  // toggle wake on/off
+  useEffect(() => {
+    if (!wakeEnabled) {
+      if (wakeRef.current) {
+        try { wakeRef.current.stop(); } catch (e) { console.debug("wake stop", e); }
+        wakeRef.current = null;
+      }
+      return;
+    }
+    // start listener
+    wakeRef.current = startWakeWord({
+      onWake: () => handleWake(),
+      onError: (e) => console.warn("wake error", e),
+    });
+    return () => {
+      if (wakeRef.current) {
+        try { wakeRef.current.stop(); } catch (e) { console.debug("wake stop", e); }
+        wakeRef.current = null;
+      }
+    };
+  }, [wakeEnabled, handleWake]);
+
+  // re-arm wake listener after each interaction completes (IDLE)
+  useEffect(() => {
+    if (!wakeEnabledRef.current) return;
+    if (state !== "IDLE") return;
+    // if already running, no-op
+    if (wakeRef.current) return;
+    wakeRef.current = startWakeWord({
+      onWake: () => handleWake(),
+    });
+  }, [state, handleWake]);
+
   return (
     <div className="App min-h-screen bg-[#050505] text-white">
       <div className="min-h-screen grid-bg">
@@ -204,6 +279,20 @@ function App() {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                data-testid="toggle-wake-button"
+                onClick={() => setWakeEnabled((v) => !v)}
+                disabled={!micSupported}
+                className={`px-3 py-2 border font-mono text-[10px] tracking-[0.2em] flex items-center gap-2 transition-colors ${
+                  wakeEnabled
+                    ? "border-[#ff3b30] bg-[#ff3b30] text-black"
+                    : "border-[#222] hover:border-[#ff3b30] text-white"
+                } ${!micSupported ? "opacity-40 cursor-not-allowed" : ""}`}
+                title='Continuous listening for "Hey JARVIS"'
+              >
+                <Radio size={12} strokeWidth={1.5} />
+                {wakeEnabled ? "WAKE ARMED" : "WAKE OFF"}
+              </button>
               <button
                 data-testid="toggle-tts-button"
                 onClick={() => {
@@ -232,6 +321,7 @@ function App() {
             <div className="lg:col-span-1 space-y-4">
               <SystemStatus state={state} />
               <CapabilityGrid />
+              <ContactsPanel />
               <div className="border border-[#222] bg-[#0a0a0a] px-5 py-4">
                 <div className="font-mono text-[10px] tracking-[0.25em] text-neutral-500 mb-2">
                   DIRECTIVE

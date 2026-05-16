@@ -1,3 +1,5 @@
+import { useState } from "react";
+import axios from "axios";
 import {
   MessageSquare,
   Phone,
@@ -10,7 +12,14 @@ import {
   Send,
   SlidersHorizontal,
   Terminal,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Zap,
 } from "lucide-react";
+
+const BACKEND = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND}/api`;
 
 const ICONS = {
   send_sms: MessageSquare,
@@ -40,14 +49,55 @@ const LABELS = {
   custom: "CUSTOM ACTION",
 };
 
+// Which action types support a real Twilio execution?
+const EXECUTABLE = new Set(["send_sms", "make_call"]);
+
 export const ActionCard = ({ action }) => {
+  const [status, setStatus] = useState("READY"); // READY | RUNNING | DONE | FAILED
+  const [resp, setResp] = useState(null);
+  const [err, setErr] = useState(null);
+
   if (!action || typeof action !== "object") return null;
   const type = action.type || "custom";
   const Icon = ICONS[type] || Terminal;
   const label = LABELS[type] || type.toUpperCase().replace(/_/g, " ");
+  const executable = EXECUTABLE.has(type);
 
-  // separate type from params
   const params = Object.entries(action).filter(([k]) => k !== "type");
+
+  const execute = async () => {
+    setErr(null);
+    setStatus("RUNNING");
+    try {
+      let url = "";
+      let body = {};
+      if (type === "send_sms") {
+        url = `${API}/jarvis/twilio/sms`;
+        body = { to: action.to, message: action.message };
+      } else if (type === "make_call") {
+        url = `${API}/jarvis/twilio/call`;
+        body = { to: action.to, message: action.message };
+      } else {
+        return;
+      }
+      const r = await axios.post(url, body);
+      setResp(r.data);
+      setStatus("DONE");
+    } catch (e) {
+      const detail = e?.response?.data?.detail || e.message;
+      setErr(detail);
+      setStatus("FAILED");
+    }
+  };
+
+  const statusColor =
+    status === "DONE"
+      ? "text-[#10b981]"
+      : status === "FAILED"
+      ? "text-[#ff3b30]"
+      : status === "RUNNING"
+      ? "text-white"
+      : "text-neutral-500";
 
   return (
     <div
@@ -61,8 +111,8 @@ export const ActionCard = ({ action }) => {
             {label}
           </span>
         </div>
-        <span className="font-mono text-[10px] tracking-[0.2em] text-neutral-500">
-          EXECUTED
+        <span className={`font-mono text-[10px] tracking-[0.2em] ${statusColor}`}>
+          {status}
         </span>
       </div>
       <div className="px-4 py-3 font-mono text-[12px] leading-relaxed">
@@ -79,6 +129,43 @@ export const ActionCard = ({ action }) => {
           ))
         )}
       </div>
+
+      {executable && (
+        <div className="border-t border-[#1a1a1a] px-4 py-2 flex items-center justify-between gap-3">
+          {err && (
+            <span className="font-mono text-[10px] text-[#ff3b30] truncate max-w-[60%]" title={err}>
+              {err}
+            </span>
+          )}
+          {resp && status === "DONE" && (
+            <span className="font-mono text-[10px] text-[#10b981] truncate max-w-[60%]">
+              sid: {resp.sid} · {resp.status}
+            </span>
+          )}
+          {!err && !resp && (
+            <span className="font-mono text-[10px] text-neutral-500">
+              Real Twilio · charges your account
+            </span>
+          )}
+          <button
+            data-testid={`execute-${type}`}
+            onClick={execute}
+            disabled={status === "RUNNING" || status === "DONE"}
+            className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 border border-[#222] hover:border-[#ff3b30] hover:bg-[#ff3b30] hover:text-black font-mono text-[10px] tracking-[0.2em] text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:border-[#222] disabled:hover:text-white transition-colors"
+          >
+            {status === "RUNNING" ? (
+              <Loader2 size={12} strokeWidth={1.5} className="animate-spin" />
+            ) : status === "DONE" ? (
+              <CheckCircle2 size={12} strokeWidth={1.5} />
+            ) : status === "FAILED" ? (
+              <XCircle size={12} strokeWidth={1.5} />
+            ) : (
+              <Zap size={12} strokeWidth={1.5} />
+            )}
+            {status === "DONE" ? "EXECUTED" : status === "FAILED" ? "RETRY" : "EXECUTE"}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
